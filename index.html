@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ece8e1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1c1a17" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ToDo">
+  <title>シンプルToDo</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="topbar">
+    <nav id="chips" class="chips" aria-label="表示の切り替え"></nav>
+    <button id="notifyBtn" class="icon-btn" type="button" aria-label="通知をオンにする" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    </button>
+    <button id="listMenuBtn" class="icon-btn" type="button" aria-label="リストの設定" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+    </button>
+  </div>
+
+  <article class="paper">
+    <div id="main"></div>
+    <div class="label-row"><span class="label">Memo</span></div>
+    <textarea id="memo" class="memo" rows="4" aria-label="メモ"></textarea>
+    <div id="paperFoot" class="paper-foot"></div>
+  </article>
+
+  <dialog id="editDialog" class="sheet">
+    <form id="editForm" method="dialog">
+      <div class="sheet-handle"></div>
+      <label class="field">
+        <span>タスク</span>
+        <input id="editTitle" type="text" required>
+      </label>
+      <label class="check-field">
+        <input id="editImportant" type="checkbox">
+        <span>Important Task（重要）</span>
+      </label>
+      <div class="field-row">
+        <label class="field">
+          <span>日付</span>
+          <input id="editDate" type="date">
+        </label>
+        <label class="field">
+          <span>時刻（通知）</span>
+          <input id="editTime" type="time">
+        </label>
+      </div>
+      <div class="field-row">
+        <label class="field">
+          <span>繰り返し</span>
+          <select id="editRepeat">
+            <option value="">なし</option>
+            <option value="daily">毎日</option>
+            <option value="weekdays">平日</option>
+            <option value="weekly">毎週</option>
+            <option value="monthly">毎月</option>
+            <option value="yearly">毎年</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>リスト</span>
+          <select id="editList"></select>
+        </label>
+      </div>
+      <div class="sheet-actions">
+        <button id="deleteBtn" type="button" class="btn danger">削除</button>
+        <span class="spacer"></span>
+        <button type="button" id="cancelBtn" class="btn">キャンセル</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden>
+    <span id="toastText"></span>
+    <button id="toastUndo" type="button">元に戻す</button>
+  </div>
+
+  <script src="parser.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
