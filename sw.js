@@ -1,6 +1,6 @@
 // オフラインでも開けるようにする Service Worker
 // ネット優先・失敗したらキャッシュ（更新がすぐ反映される）
-const CACHE = 'simple-todo-v3';
+const CACHE = 'simple-todo-v4';
 const ASSETS = ['./', 'index.html', 'styles.css', 'app.js', 'parser.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {

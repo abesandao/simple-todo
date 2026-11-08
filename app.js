@@ -122,16 +122,29 @@
   }
 
   // ---------- 空行に直接書く ----------
-  function startInline(row) {
+  // prevText: 直前の行で追加した文字（キーボードが同じ文字を次の行に二重入力するのを防ぐ）
+  function startInline(row, prevText) {
     const section = row.dataset.section;
     row.classList.remove('blank');
     row.innerHTML = `<span class="box ghost"></span><input class="inline-input" type="text" enterkeyhint="next" autocomplete="off"
       placeholder="${section === 'important' ? '重要なことを書く' : '例: 明日15時 歯医者'}"><span class="meta"></span>`;
     const input = row.querySelector('input');
     const meta = row.querySelector('.meta');
+    const startedAt = performance.now();
     let finished = false;
+    let composing = false;
+    let compositionEndedAt = -Infinity;
+
+    // 日本語変換中かどうかを自前で管理（iPhoneのSafariは確定のEnterを普通のEnterとして送ってくるため）
+    input.addEventListener('compositionstart', () => { composing = true; });
+    input.addEventListener('compositionend', () => { composing = false; compositionEndedAt = performance.now(); });
 
     input.addEventListener('input', () => {
+      // 行を移った直後に、前の行と同じ文字が勝手に入ってきたら消す
+      if (prevText && performance.now() - startedAt < 600 && input.value.trim() === prevText) {
+        input.value = '';
+        prevText = null;
+      }
       const v = input.value.trim();
       if (!v) { meta.textContent = ''; return; }
       const p = parseTask(v);
@@ -145,11 +158,12 @@
       render();
       if (v && next) {
         const nextRow = els.main.querySelector(`.rows.${section} .row.blank`);
-        if (nextRow) startInline(nextRow);
+        if (nextRow) startInline(nextRow, v);
       }
     };
     input.addEventListener('keydown', (e) => {
-      if (e.isComposing || e.keyCode === 229) return; // 日本語変換の確定Enterは無視
+      // 日本語変換の確定Enterは無視（変換終了直後のEnterも確定扱い）
+      if (e.isComposing || e.keyCode === 229 || composing || performance.now() - compositionEndedAt < 120) return;
       if (e.key === 'Enter') { e.preventDefault(); finish(true); }
       if (e.key === 'Escape') { input.value = ''; finish(false); }
     });
