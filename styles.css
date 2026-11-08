@@ -90,6 +90,23 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .important .row { border-bottom: 1.5px solid var(--rule); }
 .row.blank { cursor: text; }
 
+/* タスク行: 中身(.slide)を横にずらすと、右から赤い「削除」が出てくる */
+.row.task { padding: 0; overflow: hidden; -webkit-touch-callout: none; transition: height .25s ease; }
+.slide {
+  position: relative; flex: 1; min-width: 0; min-height: 44px;
+  display: flex; align-items: center; gap: 10px; padding: 0 2px;
+}
+.del-bg {
+  position: absolute; top: 0; bottom: 0; right: 0; width: 0;
+  background: #b5402f; color: #fff; overflow: hidden;
+  display: flex; align-items: center; justify-content: flex-end;
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+}
+.del-bg span { padding: 0 14px; opacity: .75; transition: opacity .15s, transform .15s; }
+.row.will-delete .del-bg span { opacity: 1; transform: scale(1.1); }
+.row.removing { border-bottom-color: transparent; }
+.inline-form { flex: 1; min-width: 0; display: flex; margin: 0; }
+
 .box {
   flex: none; width: 18px; height: 18px; padding: 0; border-radius: 2px;
   border: 1.6px solid var(--ink); background: transparent;
@@ -102,7 +119,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 .row.done .box svg { opacity: 1; }
 .box.ghost { opacity: .55; }
 
-.text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; cursor: pointer; padding: 8px 0; }
+.text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; padding: 8px 0; }
 .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
 .meta { flex: none; font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
 .meta .late { color: var(--late); font-weight: 600; }
@@ -110,7 +127,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
 
 /* 横線（なぞった線） */
 .strike {
-  position: absolute; left: 30px; right: 0; top: 50%; height: 2.5px; margin-top: -1px;
+  position: absolute; left: 30px; right: 2px; top: 50%; height: 2.5px; margin-top: -1px;
   background: var(--ink); border-radius: 2px; pointer-events: none;
   transform-origin: left center; transform: rotate(-.6deg) scaleX(0);
 }

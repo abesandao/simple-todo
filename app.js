@@ -65,17 +65,20 @@
     return { name: list.name, sub: 'リスト', list, filter: (t) => t.listId === list.id, hide: { list: true } };
   }
 
-  function render() {
+  function renderChips() {
     const today = todayStr();
     const open = state.tasks.filter((t) => !t.done);
-    const v = viewInfo();
-
     const chip = (view, label, count) =>
       `<button class="chip" data-view="${view}" aria-current="${state.view === view}">${esc(label)}${count ? `<span class="count">${count}</span>` : ''}</button>`;
     els.chips.innerHTML =
       chip('today', '今日', open.filter((t) => t.date && t.date <= today).length) + chip('upcoming', '予定') +
       state.lists.map((l) => chip('list:' + l.id, l.name, open.filter((t) => t.listId === l.id).length)).join('') +
       `<button class="chip add" data-action="new-list">＋ リスト</button>`;
+  }
+
+  function render() {
+    const v = viewInfo();
+    renderChips();
     els.listMenuBtn.hidden = !v.list || v.list.id === 'inbox';
 
     const tasks = state.tasks.filter(v.filter).sort(sortTasks);
@@ -91,7 +94,7 @@
     if (document.activeElement !== els.memo) els.memo.value = state.memos[state.view] || '';
 
     const doneCount = tasks.filter((t) => t.done).length;
-    els.foot.innerHTML = `<span>左→右になぞると完了</span>` + (doneCount ? `<button data-action="clear-done">済みを消す（${doneCount}）</button>` : '');
+    els.foot.innerHTML = `<span>→ なぞって完了　← なぞって削除　長押しで編集</span>` + (doneCount ? `<button data-action="clear-done">済みを消す（${doneCount}）</button>` : '');
     updateNotifyBtn();
   }
 
@@ -115,63 +118,96 @@
     if (t.repeat) meta.push('↻' + REPEAT_LABEL[t.repeat]);
     if (!hide.list && t.listId !== 'inbox') meta.push('#' + esc(listById(t.listId).name));
     return `<li class="row task${t.done ? ' done' : ''}" data-id="${t.id}">
-      <button class="box" data-action="toggle" aria-label="${t.done ? '未完了に戻す' : '完了にする'}"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></button>
-      <div class="text" data-action="edit"><span class="t">${esc(t.title)}</span><span class="meta">${meta.join(' ')}</span></div>
-      <span class="strike"></span>
+      <div class="del-bg" aria-hidden="true"><span>削除</span></div>
+      <div class="slide">
+        <button class="box" data-action="toggle" aria-label="${t.done ? '未完了に戻す' : '完了にする'}"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></button>
+        <div class="text"><span class="t">${esc(t.title)}</span><span class="meta">${meta.join(' ')}</span></div>
+        <span class="strike"></span>
+      </div>
     </li>`;
   }
 
   // ---------- 空行に直接書く ----------
-  // prevText: 直前の行で追加した文字（キーボードが同じ文字を次の行に二重入力するのを防ぐ）
-  function startInline(row, prevText) {
+  // 入力欄は1つを使い回す。Enterで追加したら、入力欄はそのままに上へタスク行を差し込む。
+  // （入力欄を作り直すと、スマホのキーボードが確定した文字を新しい欄にもう一度入れて二重追加になるため）
+  function startInline(row) {
     const section = row.dataset.section;
+    const ul = row.parentElement;
     row.classList.remove('blank');
-    row.innerHTML = `<span class="box ghost"></span><input class="inline-input" type="text" enterkeyhint="next" autocomplete="off"
-      placeholder="${section === 'important' ? '重要なことを書く' : '例: 明日15時 歯医者'}"><span class="meta"></span>`;
+    row.classList.add('editor');
+    row.innerHTML = `<span class="box ghost"></span><form class="inline-form" autocomplete="off"><input class="inline-input" type="text" enterkeyhint="enter"
+      placeholder="${section === 'important' ? '重要なことを書く' : '例: 明日15時 歯医者'}"></form><span class="meta"></span>`;
+    const form = row.querySelector('form');
     const input = row.querySelector('input');
     const meta = row.querySelector('.meta');
-    const startedAt = performance.now();
-    let finished = false;
+    let closed = false;
     let composing = false;
     let compositionEndedAt = -Infinity;
+    let last = null; // 直前に追加した文字と時刻
 
     // 日本語変換中かどうかを自前で管理（iPhoneのSafariは確定のEnterを普通のEnterとして送ってくるため）
     input.addEventListener('compositionstart', () => { composing = true; });
     input.addEventListener('compositionend', () => { composing = false; compositionEndedAt = performance.now(); });
 
-    input.addEventListener('input', () => {
-      // 行を移った直後に、前の行と同じ文字が勝手に入ってきたら消す
-      if (prevText && performance.now() - startedAt < 600 && input.value.trim() === prevText) {
-        input.value = '';
-        prevText = null;
-      }
+    const updateMeta = () => {
       const v = input.value.trim();
       if (!v) { meta.textContent = ''; return; }
       const p = parseTask(v);
       meta.textContent = [p.date && dateLabel(p.date), p.time, p.repeat && '↻' + REPEAT_LABEL[p.repeat], p.list && '#' + p.list].filter(Boolean).join(' ');
-    });
-    const finish = (next) => {
-      if (finished) return;
-      finished = true;
-      const v = input.value.trim();
-      if (v) addTask(v, section === 'important');
-      render();
-      if (v && next) {
-        const nextRow = els.main.querySelector(`.rows.${section} .row.blank`);
-        if (nextRow) startInline(nextRow, v);
-      }
     };
-    input.addEventListener('keydown', (e) => {
-      // 日本語変換の確定Enterは無視（変換終了直後のEnterも確定扱い）
-      if (e.isComposing || e.keyCode === 229 || composing || performance.now() - compositionEndedAt < 120) return;
-      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
-      if (e.key === 'Escape') { input.value = ''; finish(false); }
+    input.addEventListener('input', () => {
+      // 追加した直後に、同じ文字がキーボードから勝手に入ってきたら消す
+      if (last && performance.now() - last.at < 1200 && input.value.trim() === last.text) input.value = '';
+      updateMeta();
     });
-    input.addEventListener('blur', () => finish(false));
+
+    const placeRow = (t) => {
+      const target = els.main.querySelector(`.rows.${t.important ? 'important' : 'todo'}`);
+      const tmp = document.createElement('ul');
+      tmp.innerHTML = taskRow(t, viewInfo().hide);
+      target.insertBefore(tmp.firstElementChild, target === ul ? row : target.querySelector('.row.blank'));
+      // 空行を1つ減らす（紙の行数を保つ。最低1行は空ける）
+      const sec = target.classList.contains('important') ? 'important' : 'todo';
+      const blanks = target.querySelectorAll('.row.blank');
+      const empties = blanks.length + (target === ul ? 1 : 0);
+      if (blanks.length && empties > Math.max(MIN_ROWS[sec] - target.querySelectorAll('.row.task').length, 1)) blanks[blanks.length - 1].remove();
+    };
+    const commit = () => {
+      const v = input.value.trim();
+      input.value = '';
+      meta.textContent = '';
+      if (!v) return;
+      last = { text: v, at: performance.now() };
+      const r = addTask(v, section === 'important');
+      if (r && r.visible) placeRow(r.task);
+      renderChips();
+    };
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      // 日本語変換の確定Enterは無視（変換終了直後のEnterも確定扱い）
+      if (composing || performance.now() - compositionEndedAt < 150) return;
+      commit();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { input.value = ''; input.blur(); }
+    });
+    input.addEventListener('blur', () => {
+      if (closed) return;
+      closed = true;
+      commit();
+      render();
+    });
     input.focus();
   }
 
+  // 同じ内容が短時間に2回来たら1回だけ追加する（念のための二重追加防止）
+  let lastAdd = null;
   function addTask(raw, important) {
+    const key = raw + '|' + !!important;
+    if (lastAdd && lastAdd.key === key && Date.now() - lastAdd.at < 1500) return null;
+    lastAdd = { key, at: Date.now() };
+
     const p = parseTask(raw);
     let listId = state.view.startsWith('list:') ? state.view.slice(5) : 'inbox';
     if (p.list) {
@@ -195,6 +231,7 @@
         : state.view === 'list:' + listId;
     if (!visible) toast(`追加しました（${date ? dateLabel(date) : listById(listId).name}）`);
     else if (t.time && 'Notification' in window && Notification.permission === 'default') toast('時刻に通知するには右上の🔔をタップ');
+    return { task: t, visible: !!visible };
   }
 
   // ---------- 完了・取り消し ----------
@@ -246,50 +283,106 @@
     setTimeout(render, 260);
   }
 
-  // ---------- なぞって横線 ----------
+  // ---------- 削除 ----------
+  function deleteTask(id, li) {
+    const t = state.tasks.find((x) => x.id === id);
+    if (!t) return;
+    const snap = snapshot(t);
+    const index = state.tasks.indexOf(t);
+    state.tasks.splice(index, 1);
+    save();
+    if (navigator.vibrate) navigator.vibrate(12);
+    toast('削除しました', () => { state.tasks.splice(index, 0, snap); save(); render(); });
+    if (li) {
+      li.style.height = li.offsetHeight + 'px';
+      li.classList.add('removing');
+      requestAnimationFrame(() => { li.style.height = '0px'; });
+      setTimeout(render, 260);
+    } else render();
+  }
+
+  // ---------- なぞる（→完了 / ←削除）・長押し（編集） ----------
+  const LONG_PRESS_MS = 500;
   let drag = null, suppressClick = false;
+  const blockClicks = (ms) => { suppressClick = true; setTimeout(() => (suppressClick = false), ms); };
+
   els.main.addEventListener('pointerdown', (e) => {
     const li = e.target.closest('.row.task');
     if (!li || e.button > 0) return;
     const strike = li.querySelector('.strike');
-    drag = { li, strike, x: e.clientX, y: e.clientY, w: strike.offsetWidth || li.clientWidth /* transformの影響を受けない幅 */, swiping: false, done: li.classList.contains('done'), p: 0, id: e.pointerId };
+    drag = {
+      li, strike, slide: li.querySelector('.slide'), bg: li.querySelector('.del-bg'),
+      x: e.clientX, y: e.clientY, id: e.pointerId, mode: null, p: 0,
+      w: li.clientWidth, sw: strike.offsetWidth || li.clientWidth /* transformの影響を受けない幅 */,
+      done: li.classList.contains('done'),
+    };
+    // 長押しで編集
+    drag.timer = setTimeout(() => {
+      if (!drag || drag.mode) return;
+      const id = drag.li.dataset.id;
+      drag = null;
+      blockClicks(600);
+      if (navigator.vibrate) navigator.vibrate(15);
+      openEdit(id);
+    }, LONG_PRESS_MS);
   });
   els.main.addEventListener('pointermove', (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (!drag.swiping) {
+    if (!drag.mode) {
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(drag.timer); // 動いたら長押しではない
       if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { drag = null; return; } // 縦スクロール
       if (Math.abs(dx) < 10) return;
-      // 未完了は右へ、完了済みは左へなぞったときだけ反応
-      if ((!drag.done && dx < 0) || (drag.done && dx > 0)) { drag = null; return; }
-      drag.swiping = true;
+      if (dx > 0 && drag.done) { drag = null; return; } // 完了済みを右へ → 何もしない
+      drag.mode = dx > 0 ? 'strike' : 'delete';
       try { drag.li.setPointerCapture(e.pointerId); } catch (err) { /* 取得できなくても続行 */ }
       drag.strike.style.transition = 'none';
+      drag.slide.style.transition = 'none';
     }
-    const reach = drag.w * 0.85;
-    drag.p = drag.done ? Math.max(0, Math.min(1, 1 + dx / reach)) : Math.max(0, Math.min(1, (dx - 4) / reach));
-    drag.strike.style.transform = `rotate(-.6deg) scaleX(${drag.p})`;
+    if (drag.mode === 'strike') {
+      drag.p = Math.max(0, Math.min(1, (dx - 4) / (drag.sw * 0.85)));
+      drag.strike.style.transform = `rotate(-.6deg) scaleX(${drag.p})`;
+    } else {
+      const off = Math.min(0, dx);
+      drag.slide.style.transform = `translateX(${off}px)`;
+      drag.bg.style.width = -off + 'px';
+      drag.p = -off / drag.w;
+      drag.li.classList.toggle('will-delete', drag.p > 0.35);
+    }
   });
   function endDrag(e) {
     if (!drag || e.pointerId !== drag.id) return;
+    clearTimeout(drag.timer);
     const d = drag; drag = null;
-    if (!d.swiping) return;
-    suppressClick = true; setTimeout(() => (suppressClick = false), 50);
-    d.strike.style.transition = 'transform .2s ease';
+    if (!d.mode) return;
+    blockClicks(80);
     const id = d.li.dataset.id;
-    if (!d.done && d.p > 0.6) {
-      d.strike.style.transform = 'rotate(-.6deg) scaleX(1)';
-      complete(id, d.li, true);
-    } else if (d.done && d.p < 0.4) {
-      d.strike.style.transform = 'rotate(-.6deg) scaleX(0)';
-      uncomplete(id, d.li);
+    if (d.mode === 'strike') {
+      d.strike.style.transition = 'transform .2s ease';
+      if (d.p > 0.6 && e.type === 'pointerup') {
+        d.strike.style.transform = 'rotate(-.6deg) scaleX(1)';
+        complete(id, d.li, true);
+      } else {
+        d.strike.style.transform = '';
+        setTimeout(() => { d.strike.style.transition = ''; }, 220);
+      }
     } else {
-      d.strike.style.transform = '';
-      setTimeout(() => { d.strike.style.transition = ''; }, 220);
+      d.slide.style.transition = 'transform .2s ease';
+      d.bg.style.transition = 'width .2s ease';
+      if (d.p > 0.35 && e.type === 'pointerup') {
+        d.slide.style.transform = 'translateX(-100%)';
+        d.bg.style.width = '100%';
+        deleteTask(id, d.li);
+      } else {
+        d.slide.style.transform = '';
+        d.bg.style.width = '0px';
+        d.li.classList.remove('will-delete');
+      }
     }
   }
   els.main.addEventListener('pointerup', endDrag);
   els.main.addEventListener('pointercancel', endDrag);
+  els.main.addEventListener('contextmenu', (e) => { if (e.target.closest('.row.task')) e.preventDefault(); }); // 長押しメニューを出さない
 
   // ---------- 編集シート ----------
   let editingId = null;
@@ -305,7 +398,9 @@
     els.editList.innerHTML = state.lists.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
     els.editList.value = t.listId;
     els.dialog.showModal();
+    dialogOpenedAt = performance.now();
   }
+  let dialogOpenedAt = 0;
   els.editForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const t = state.tasks.find((x) => x.id === editingId);
@@ -323,16 +418,13 @@
     els.dialog.close();
   });
   els.cancelBtn.addEventListener('click', () => els.dialog.close());
-  els.dialog.addEventListener('click', (e) => { if (e.target === els.dialog) els.dialog.close(); });
+  els.dialog.addEventListener('click', (e) => {
+    // 長押しで開いた直後の指離れで閉じないように
+    if (e.target === els.dialog && performance.now() - dialogOpenedAt > 600) els.dialog.close();
+  });
   els.deleteBtn.addEventListener('click', () => {
-    const t = state.tasks.find((x) => x.id === editingId);
-    if (t) {
-      const snap = snapshot(t);
-      state.tasks = state.tasks.filter((x) => x.id !== editingId);
-      save(); render();
-      toast('削除しました', () => restore(snap));
-    }
     els.dialog.close();
+    deleteTask(editingId);
   });
 
   // ---------- リスト ----------
@@ -375,9 +467,10 @@
     const el = e.target.closest('[data-action]');
     if (!el) return;
     const li = el.closest('.row.task');
+    // 文字のタップでは何もしない（誤タップ防止）。編集は長押し。
     if (el.dataset.action === 'toggle') {
       li.classList.contains('done') ? uncomplete(li.dataset.id, li) : complete(li.dataset.id, li);
-    } else if (el.dataset.action === 'edit') openEdit(li.dataset.id);
+    }
   });
   els.foot.addEventListener('click', (e) => {
     if (!e.target.closest('[data-action="clear-done"]')) return;
