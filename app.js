@@ -177,6 +177,9 @@
       input.value = '';
       meta.textContent = '';
       if (!v) return;
+      // 直前に追加したものと同じ文字なら追加しない。
+      // スマホのキーボードは確定済みの文字を覚えていて、Enterを連打すると同じ文字を何度も入れ直してくるため。
+      if (last && v === last.text) return;
       last = { text: v, at: performance.now() };
       const r = addTask(v, section === 'important');
       if (r && r.visible) placeRow(r.task);
@@ -205,7 +208,7 @@
   let lastAdd = null;
   function addTask(raw, important) {
     const key = raw + '|' + !!important;
-    if (lastAdd && lastAdd.key === key && Date.now() - lastAdd.at < 1500) return null;
+    if (lastAdd && lastAdd.key === key && Date.now() - lastAdd.at < 1500) { lastAdd.at = Date.now(); return null; } // 連打中はずっと防ぐ
     lastAdd = { key, at: Date.now() };
 
     const p = parseTask(raw);
