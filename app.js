@@ -44,6 +44,8 @@
     const sameYear = d.getFullYear() === t.getFullYear();
     return `${sameYear ? '' : d.getFullYear() + '/'}${d.getMonth() + 1}/${d.getDate()}(${WEEK[d.getDay()]})`;
   }
+  // 端末の現在時刻 HH:MM
+  function clockStr() { const d = new Date(); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
   function shortDate(ds) { const d = parseDate(ds); return `${d.getMonth() + 1}/${d.getDate()}（${WEEK[d.getDay()]}）`; }
   function esc(s) { return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -86,7 +88,7 @@
     const todo = tasks.filter((t) => !t.important);
 
     els.main.innerHTML =
-      `<div class="label-row"><span class="label">Important Task</span><span class="brand">${esc(v.name)}<small>${esc(v.sub)}</small></span></div>` +
+      `<div class="label-row"><span class="label">Important Task</span><span class="brand">${esc(v.name)}<small>${shortDate(todayStr())} <span class="clock">${clockStr()}</span></small></span></div>` +
       rows('important', imp, v.hide) +
       `<div class="label-row"><span class="label">ToDo List</span></div>` +
       rows('todo', todo, v.hide);
@@ -526,11 +528,28 @@
 
   // 入力中は描き直さない（書きかけが消えないように）
   const typing = () => document.activeElement && (document.activeElement.classList.contains('inline-input') || document.activeElement === els.memo);
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { if (!typing()) render(); checkReminders(); }
-  });
+  // ---------- 端末の時計に合わせる ----------
+  // 日付が変わっていたら描き直し、変わっていなければ時刻表示だけ更新する
   let lastDay = todayStr();
-  setInterval(() => { if (todayStr() !== lastDay && !typing()) { lastDay = todayStr(); render(); } }, 60000);
+  function syncClock(forceRender) {
+    const day = todayStr();
+    if ((day !== lastDay || forceRender) && !typing()) {
+      lastDay = day;
+      render();
+    } else {
+      document.querySelectorAll('.brand .clock').forEach((el) => { el.textContent = clockStr(); });
+    }
+    checkReminders();
+  }
+  // 分が変わるちょうどのタイミングで更新（端末の時計とずれないように）
+  (function scheduleTick() {
+    setTimeout(() => { syncClock(false); scheduleTick(); }, 60000 - (Date.now() % 60000) + 50);
+  })();
+  // バックグラウンドから戻ったとき（iPhoneのホーム画面アプリは visibilitychange が来ないことがあるので複数で拾う）
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) syncClock(true); });
+  window.addEventListener('pageshow', () => syncClock(true));
+  window.addEventListener('focus', () => syncClock(false));
+  document.addEventListener('pointerdown', () => { if (todayStr() !== lastDay) syncClock(false); }, true);
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
